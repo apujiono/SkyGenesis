@@ -43,18 +43,17 @@ try:
     room_messages_collection = db.room_messages
     private_messages_collection = db.private_messages
     notifications_collection = db.notifications
+    rooms_collection = db.rooms  # New collection for persistent rooms
     fs = GridFS(db)
     logger.info("Successfully connected to MongoDB")
 except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {str(e)}")
     raise
 
-# In-memory storage untuk rooms
-rooms = {}
-
-def generate_room_code(length: int, existing_codes: list[str]) -> str:
+def generate_room_code(length: int) -> str:
     try:
         logger.info(f"Generating room code with length {length}")
+        existing_codes = [r["code"] for r in rooms_collection.find()]
         while True:
             code_chars = [random.choice(ascii_letters) for _ in range(length)]
             code = ''.join(code_chars)
@@ -100,8 +99,13 @@ def home():
             
             if create != False:
                 logger.info(f"Creating new room for user: {username}")
-                room_code = generate_room_code(code_length, list(rooms.keys()))
-                rooms[room_code] = {'members': 0}
+                room_code = generate_room_code(code_length)
+                rooms_collection.insert_one({
+                    "code": room_code,
+                    "creator": username,
+                    "created_at": datetime.utcnow(),
+                    "members": [username]
+                })
                 users_collection.update_one(
                     {"username": username},
                     {"$addToSet": {"rooms": room_code}}
@@ -117,10 +121,15 @@ def home():
                 if not code:
                     logger.warning("Room code missing in join request")
                     return render_template('home.html', error="Masukkan code room", username=username)
-                if code not in rooms:
+                room = rooms_collection.find_one({"code": code})
+                if not room:
                     logger.warning(f"Invalid room code: {code}")
                     return render_template('home.html', error="Code room salah", username=username)
                 room_code = code
+                rooms_collection.update_one(
+                    {"code": room_code},
+                    {"$addToSet": {"members": username}}
+                )
                 users_collection.update_one(
                     {"username": username},
                     {"$addToSet": {"rooms": room_code}}
@@ -189,6 +198,7 @@ def search_users():
         query = request.form.get('query', '')
         logger.info(f"Searching users with query: {query}")
         users = list(users_collection.find({"username": {"$regex": query, "$options": "i"}}))
+        logger.info(f"Found {len(users)} users for query: {query}")
         return jsonify([{
             "username": u["username"],
             "avatar": f"/avatar/{u['username']}" if u.get("avatar") else "https://via.placeholder.com/40",
@@ -244,25 +254,33 @@ def upload_avatar():
 @app.route('/room/<room_code>')
 def room(room_code):
     username = session.get('username')
-    if not username or room_code not in rooms:
-        logger.warning(f"Invalid room access: {room_code} by {username}")
+    if not username:
+        logger.warning("No username in session for room access")
         return redirect(url_for('home'))
     try:
+        room = rooms_collection.find_one({"code": room_code})
+        if not room:
+            logger.warning(f"Invalid room code: {room_code}")
+            return redirect(url_for('dashboard'))
         session['room'] = room_code
         messages = room_messages_collection.find({"room": room_code}).sort("timestamp", -1).limit(50)
         logger.info(f"Rendering room {room_code} for {username}")
         return render_template('room.html', room=room_code, username=username, messages=messages)
     except Exception as e:
         logger.error(f"Error in room route: {str(e)}")
-        return render_template('home.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
+        return render_template('dashboard.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
 
 @app.route('/room/<room_code>/more/<int:page>')
 def room_more(room_code, page):
     username = session.get('username')
-    if not username or room_code not in rooms:
-        logger.warning(f"Invalid room more access: {room_code} by {username}")
+    if not username:
+        logger.warning("No username in session for room more")
         return jsonify([])
     try:
+        room = rooms_collection.find_one({"code": room_code})
+        if not room:
+            logger.warning(f"Invalid room code: {room_code}")
+            return jsonify([])
         skip = page * 50
         messages = room_messages_collection.find({"room": room_code}).sort("timestamp", -1).skip(skip).limit(50)
         logger.info(f"Loading more messages for room {room_code}, page {page}")
@@ -294,7 +312,7 @@ def private_chat(receiver):
         return render_template('private.html', username=username, receiver=receiver, messages=messages)
     except Exception as e:
         logger.error(f"Error in private_chat route: {str(e)}")
-        return render_template('home.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
+        return render_template('dashboard.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
 
 @app.route('/private/<receiver>/more/<int:page>')
 def private_more(receiver, page):
@@ -350,21 +368,26 @@ def handle_connect():
         logger.warning("No username in session on connect")
         return
     try:
-        if room and room in rooms:
-            join_room(room)
-            send({
-                "sender": "",
-                "message": f"{username} telah masuk chat"
-            }, to=room)
-            notifications_collection.insert_one({
-                "username": username,
-                "message": f"Kamu bergabung di room {room}",
-                "timestamp": datetime.utcnow(),
-                "read": False
-            })
-            emit('notification', {"message": f"{username} bergabung di room {room}"}, broadcast=True)
-            rooms[room]["members"] += 1
-            logger.info(f"User {username} connected to room {room}")
+        if room:
+            room_data = rooms_collection.find_one({"code": room})
+            if room_data:
+                join_room(room)
+                send({
+                    "sender": "",
+                    "message": f"{username} telah masuk chat"
+                }, to=room)
+                notifications_collection.insert_one({
+                    "username": username,
+                    "message": f"Kamu bergabung di room {room}",
+                    "timestamp": datetime.utcnow(),
+                    "read": False
+                })
+                emit('notification', {"message": f"{username} bergabung di room {room}"}, broadcast=True)
+                rooms_collection.update_one(
+                    {"code": room},
+                    {"$addToSet": {"members": username}}
+                )
+                logger.info(f"User {username} connected to room {room}")
         if private_receiver:
             private_room = f"private_{min(username, private_receiver)}_{max(username, private_receiver)}"
             join_room(private_room)
@@ -383,7 +406,7 @@ def handle_connect():
 def handle_room_message(payload):
     room = session.get('room')
     username = session.get('username')
-    if room not in rooms:
+    if not room or not rooms_collection.find_one({"code": room}):
         logger.warning(f"Invalid room message attempt: {room} by {username}")
         return
     try:
@@ -442,10 +465,10 @@ def handle_typing(data):
     room = session.get('room')
     private_receiver = session.get('private_receiver')
     try:
-        if room and room in rooms:
+        if room and rooms_collection.find_one({"code": room}):
             emit('typing', {"username": username, "isTyping": data["isTyping"]}, to=room, include_self=False)
         if private_receiver:
-            private_room = f"private_{min(username, receiver)}_{max(username, private_receiver)}"
+            private_room = f"private_{min(username, private_receiver)}_{max(username, private_receiver)}"
             emit('typing', {"username": username, "isTyping": data["isTyping"]}, to=private_room, include_self=False)
         logger.info(f"Typing event from {username}")
     except Exception as e:
@@ -462,10 +485,11 @@ def handle_disconnect():
                 {"username": username},
                 {"$set": {"online": False, "last_seen": datetime.utcnow()}}
             )
-        if room and room in rooms:
-            rooms[room]["members"] -= 1
-            if rooms[room]["members"] <= 0:
-                del rooms[room]
+        if room and rooms_collection.find_one({"code": room}):
+            rooms_collection.update_one(
+                {"code": room},
+                {"$pull": {"members": username}}
+            )
             send({
                 "sender": "",
                 "message": f"{username} telah keluar chat"
