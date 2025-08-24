@@ -21,17 +21,6 @@
       {% endfor %}
     </ul>
   </div>
-  <div class="friend-requests-section">
-    <h3>Permintaan Teman</h3>
-    <ul>
-      {% for req in friend_requests %}
-      <li>
-        {{req.from}} ingin berteman
-        <button onclick="acceptFriendRequest('{{req._id}}')" class="btn btn-small">Terima</button>
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
   <div class="friends-section">
     <h3>Daftar Teman</h3>
     <ul>
@@ -125,35 +114,15 @@
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        alert('Permintaan teman terkirim!');
-      } else {
-        alert(data.error);
-      }
-    })
-    .catch(error => {
-      console.error('Error adding friend:', error);
-      alert('Gagal mengirim permintaan teman');
-    });
-  }
-
-  // Fungsi untuk menerima permintaan teman
-  function acceptFriendRequest(requestId) {
-    fetch(`/accept_friend_request/${requestId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.success) {
-        alert('Permintaan teman diterima!');
+        alert('Teman berhasil ditambahkan!');
         location.reload();
       } else {
         alert(data.error);
       }
     })
     .catch(error => {
-      console.error('Error accepting friend request:', error);
-      alert('Gagal menerima permintaan teman');
+      console.error('Error adding friend:', error);
+      alert('Gagal menambah teman');
     });
   }
 </script>
