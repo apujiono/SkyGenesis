@@ -21,17 +21,42 @@
       {% endfor %}
     </ul>
   </div>
+  <div class="friend-requests-section">
+    <h3>Permintaan Teman</h3>
+    <ul>
+      {% for req in friend_requests %}
+      <li>
+        {{req.from}} ingin berteman
+        <button onclick="acceptFriendRequest('{{req._id}}')" class="btn btn-small">Terima</button>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="friends-section">
+    <h3>Daftar Teman</h3>
+    <ul>
+      {% for friend in friends %}
+      <li>
+        <img src="{{friend.avatar and '/avatar/' + friend.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
+        {{friend.username}} (Terakhir: {{friend.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}) - 
+        <a href="{{url_for('private_chat', receiver=friend.username)}}" class="btn btn-small"><i class="fas fa-comment"></i> Chat Pribadi</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
   <div class="users-section">
-    <h3>Pengguna Online</h3>
+    <h3>Cari Pengguna</h3>
     <input type="text" id="search-user" placeholder="Cari pengguna..." />
     <div id="search-results"></div>
     <a href="{{url_for('refresh_users')}}" class="btn"><i class="fas fa-sync-alt"></i> Refresh</a>
+    <h4>Pengguna Online</h4>
     <ul id="online-users">
       {% for u in online_users %}
       {% if u.username != username %}
       <li>
         <img src="{{u.avatar and '/avatar/' + u.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
         {{u.username}} (Terakhir: {{u.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}) - 
+        <button onclick="addFriend('{{u.username}}')" class="btn btn-small">Tambah Teman</button>
         <a href="{{url_for('private_chat', receiver=u.username)}}" class="btn btn-small"><i class="fas fa-comment"></i> Chat Pribadi</a>
       </li>
       {% endif %}
@@ -49,7 +74,21 @@
   <a href="/" class="btn btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
 </div>
 <script>
-  document.getElementById("search-user").addEventListener("input", function() {
+  // Debounce untuk autocomplete
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  // Pencarian pengguna dengan autocomplete
+  document.getElementById("search-user").addEventListener("input", debounce(function() {
     const query = this.value;
     fetch('/search_users', {
       method: 'POST',
@@ -66,6 +105,7 @@
         <div>
           <img src="${user.avatar}" alt="Avatar" class="avatar" /> 
           ${user.username} (Terakhir: ${user.last_seen}) - 
+          <button onclick="addFriend('${user.username}')" class="btn btn-small">Tambah Teman</button>
           <a href="/private/${user.username}" class="btn btn-small"><i class="fas fa-comment"></i> Chat</a>
         </div>
       `).join('');
@@ -74,6 +114,47 @@
       console.error('Error searching users:', error);
       document.getElementById("search-results").innerHTML = '<p>Error loading users</p>';
     });
-  });
+  }, 300));
+
+  // Fungsi untuk menambah teman
+  function addFriend(username) {
+    fetch(`/add_friend/${username}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        alert('Permintaan teman terkirim!');
+      } else {
+        alert(data.error);
+      }
+    })
+    .catch(error => {
+      console.error('Error adding friend:', error);
+      alert('Gagal mengirim permintaan teman');
+    });
+  }
+
+  // Fungsi untuk menerima permintaan teman
+  function acceptFriendRequest(requestId) {
+    fetch(`/accept_friend_request/${requestId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        alert('Permintaan teman diterima!');
+        location.reload();
+      } else {
+        alert(data.error);
+      }
+    })
+    .catch(error => {
+      console.error('Error accepting friend request:', error);
+      alert('Gagal menerima permintaan teman');
+    });
+  }
 </script>
 {% endblock %}
