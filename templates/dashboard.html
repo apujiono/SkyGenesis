@@ -26,7 +26,7 @@
     <input type="text" id="search-user" placeholder="Cari pengguna..." />
     <div id="search-results"></div>
     <a href="{{url_for('refresh_users')}}" class="btn"><i class="fas fa-sync-alt"></i> Refresh</a>
-    <ul>
+    <ul id="online-users">
       {% for u in online_users %}
       {% if u.username != username %}
       <li>
@@ -50,14 +50,18 @@
 </div>
 <script>
   document.getElementById("search-user").addEventListener("input", function() {
+    const query = this.value;
     fetch('/search_users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'query=' + encodeURIComponent(this.value)
+      body: 'query=' + encodeURIComponent(query)
     })
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) throw new Error('Search failed');
+      return response.json();
+    })
     .then(data => {
-      let results = document.getElementById("search-results");
+      const results = document.getElementById("search-results");
       results.innerHTML = data.map(user => `
         <div>
           <img src="${user.avatar}" alt="Avatar" class="avatar" /> 
@@ -65,6 +69,10 @@
           <a href="/private/${user.username}" class="btn btn-small"><i class="fas fa-comment"></i> Chat</a>
         </div>
       `).join('');
+    })
+    .catch(error => {
+      console.error('Error searching users:', error);
+      document.getElementById("search-results").innerHTML = '<p>Error loading users</p>';
     });
   });
 </script>
