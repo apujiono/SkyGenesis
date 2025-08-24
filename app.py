@@ -4,16 +4,23 @@ from flask import Flask, request, render_template, redirect, url_for, session, j
 from flask_socketio import SocketIO, join_room, leave_room, send, emit
 from pymongo import MongoClient
 from gridfs import GridFS
+from bson.objectid import ObjectId
 from datetime import datetime
 import os
 from dotenv import load_dotenv
 from io import BytesIO
 from werkzeug.utils import secure_filename
-from bson.objectid import ObjectId
 import logging
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -21,20 +28,25 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY")
+if not app.config["SECRET_KEY"]:
+    logger.error("FLASK_SECRET_KEY is not set")
+    raise ValueError("FLASK_SECRET_KEY is not set")
+
 socketio = SocketIO(app)
 
 # MongoDB setup
 try:
     mongo_client = MongoClient(os.getenv("MONGO_URI"), serverSelectionTimeoutMS=5000)
+    mongo_client.server_info()  # Test connection
     db = mongo_client.skygenesis
     users_collection = db.users
     room_messages_collection = db.room_messages
     private_messages_collection = db.private_messages
     notifications_collection = db.notifications
     fs = GridFS(db)
-    logger.info("Connected to MongoDB")
+    logger.info("Successfully connected to MongoDB")
 except Exception as e:
-    logger.error(f"Failed to connect to MongoDB: {e}")
+    logger.error(f"Failed to connect to MongoDB: {str(e)}")
     raise
 
 # In-memory storage untuk rooms
@@ -42,13 +54,15 @@ rooms = {}
 
 def generate_room_code(length: int, existing_codes: list[str]) -> str:
     try:
+        logger.info(f"Generating room code with length {length}")
         while True:
             code_chars = [random.choice(ascii_letters) for _ in range(length)]
             code = ''.join(code_chars)
             if code not in existing_codes:
+                logger.info(f"Generated unique room code: {code}")
                 return code
     except Exception as e:
-        logger.error(f"Error generating room code: {e}")
+        logger.error(f"Error generating room code: {str(e)}")
         raise
 
 @app.route('/', methods=["GET", "POST"])
@@ -63,11 +77,13 @@ def home():
             join = request.form.get('join', False)
             
             if not username:
-                logger.warning("Username missing")
+                logger.warning("Username missing in POST request")
                 return render_template('home.html', error="Nama diperlukan", code=code)
             
+            logger.info(f"Processing request for user: {username}")
             user = users_collection.find_one({"username": username})
             if not user:
+                logger.info(f"Creating new user: {username}")
                 users_collection.insert_one({
                     "username": username,
                     "online": True,
@@ -76,12 +92,14 @@ def home():
                     "last_seen": datetime.utcnow()
                 })
             else:
+                logger.info(f"Updating existing user: {username}")
                 users_collection.update_one(
                     {"username": username},
                     {"$set": {"online": True, "last_seen": datetime.utcnow()}}
                 )
             
             if create != False:
+                logger.info(f"Creating new room for user: {username}")
                 room_code = generate_room_code(code_length, list(rooms.keys()))
                 rooms[room_code] = {'members': 0}
                 users_collection.update_one(
@@ -97,7 +115,7 @@ def home():
                 logger.info(f"Room created: {room_code} by {username}")
             elif join != False:
                 if not code:
-                    logger.warning("Room code missing")
+                    logger.warning("Room code missing in join request")
                     return render_template('home.html', error="Masukkan code room", username=username)
                 if code not in rooms:
                     logger.warning(f"Invalid room code: {code}")
@@ -114,41 +132,62 @@ def home():
                     "read": False
                 })
                 logger.info(f"User {username} joined room: {room_code}")
+            else:
+                logger.warning("Neither create nor join action specified")
+                return render_template('home.html', error="Aksi tidak valid", username=username)
             
             session['room'] = room_code
             session['username'] = username
+            logger.info(f"Redirecting {username} to dashboard")
             return redirect(url_for('dashboard'))
         except Exception as e:
-            logger.error(f"Error in home route: {e}")
-            return render_template('home.html', error="Terjadi kesalahan server", username=username)
+            logger.error(f"Error in home route: {str(e)}")
+            return render_template('home.html', error=f"Terjadi kesalahan server: {str(e)}", username=username), 500
     return render_template('home.html')
 
 @app.route('/dashboard')
 def dashboard():
     username = session.get('username')
     if not username:
-        logger.warning("No username in session")
+        logger.warning("No username in session for dashboard")
         return redirect(url_for('home'))
-    user = users_collection.find_one({"username": username})
-    online_users = list(users_collection.find({"online": True}))
-    notifications = list(notifications_collection.find({"username": username}).sort("timestamp", -1).limit(10))
-    return render_template('dashboard.html', username=username, user=user, online_users=online_users, notifications=notifications)
+    try:
+        user = users_collection.find_one({"username": username})
+        if not user:
+            logger.error(f"User {username} not found in database")
+            return redirect(url_for('home'))
+        online_users = list(users_collection.find({"online": True}))
+        notifications = list(notifications_collection.find({"username": username}).sort("timestamp", -1).limit(10))
+        logger.info(f"Rendering dashboard for {username}")
+        return render_template('dashboard.html', username=username, user=user, online_users=online_users, notifications=notifications)
+    except Exception as e:
+        logger.error(f"Error in dashboard route: {str(e)}")
+        return render_template('home.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
 
 @app.route('/refresh_users')
 def refresh_users():
     username = session.get('username')
     if not username:
-        logger.warning("No username in session")
+        logger.warning("No username in session for refresh_users")
         return redirect(url_for('home'))
-    user = users_collection.find_one({"username": username})
-    online_users = list(users_collection.find({"online": True}))
-    notifications = list(notifications_collection.find({"username": username}).sort("timestamp", -1).limit(10))
-    return render_template('dashboard.html', username=username, user=user, online_users=online_users, notifications=notifications)
+    try:
+        user = users_collection.find_one({"username": username})
+        if not user:
+            logger.error(f"User {username} not found in database")
+            return redirect(url_for('home'))
+        online_users = list(users_collection.find({"online": True}))
+        notifications = list(notifications_collection.find({"username": username}).sort("timestamp", -1).limit(10))
+        logger.info(f"Refreshing users for {username}")
+        return render_template('dashboard.html', username=username, user=user, online_users=online_users, notifications=notifications)
+    except Exception as e:
+        logger.error(f"Error in refresh_users route: {str(e)}")
+        return render_template('home.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
 
 @app.route('/search_users', methods=["POST"])
 def search_users():
     try:
         query = request.form.get('query', '')
+        logger.info(f"Searching users with query: {query}")
         users = list(users_collection.find({"username": {"$regex": query, "$options": "i"}}))
         return jsonify([{
             "username": u["username"],
@@ -156,19 +195,21 @@ def search_users():
             "last_seen": u["last_seen"].strftime("%Y-%m-%d %H:%M:%S")
         } for u in users])
     except Exception as e:
-        logger.error(f"Error in search_users: {e}")
+        logger.error(f"Error in search_users: {str(e)}")
         return jsonify({"error": "Search failed"}), 500
 
 @app.route('/avatar/<username>')
 def get_avatar(username):
     try:
+        logger.info(f"Fetching avatar for {username}")
         user = users_collection.find_one({"username": username})
         if user and user.get("avatar"):
             file = fs.get(user["avatar"])
             return send_file(BytesIO(file.read()), mimetype=file.content_type)
+        logger.info(f"No avatar found for {username}, using default")
         return redirect("https://via.placeholder.com/40")
     except Exception as e:
-        logger.error(f"Error fetching avatar for {username}: {e}")
+        logger.error(f"Error fetching avatar for {username}: {str(e)}")
         return redirect("https://via.placeholder.com/40")
 
 @app.route('/upload_avatar', methods=["POST"])
@@ -197,7 +238,7 @@ def upload_avatar():
                 logger.info(f"Avatar uploaded for {username}")
         return redirect(url_for('dashboard'))
     except Exception as e:
-        logger.error(f"Error uploading avatar: {e}")
+        logger.error(f"Error uploading avatar: {str(e)}")
         return redirect(url_for('dashboard'))
 
 @app.route('/room/<room_code>')
@@ -206,9 +247,14 @@ def room(room_code):
     if not username or room_code not in rooms:
         logger.warning(f"Invalid room access: {room_code} by {username}")
         return redirect(url_for('home'))
-    session['room'] = room_code
-    messages = room_messages_collection.find({"room": room_code}).sort("timestamp", -1).limit(50)
-    return render_template('room.html', room=room_code, username=username, messages=messages)
+    try:
+        session['room'] = room_code
+        messages = room_messages_collection.find({"room": room_code}).sort("timestamp", -1).limit(50)
+        logger.info(f"Rendering room {room_code} for {username}")
+        return render_template('room.html', room=room_code, username=username, messages=messages)
+    except Exception as e:
+        logger.error(f"Error in room route: {str(e)}")
+        return render_template('home.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
 
 @app.route('/room/<room_code>/more/<int:page>')
 def room_more(room_code, page):
@@ -219,13 +265,15 @@ def room_more(room_code, page):
     try:
         skip = page * 50
         messages = room_messages_collection.find({"room": room_code}).sort("timestamp", -1).skip(skip).limit(50)
+        logger.info(f"Loading more messages for room {room_code}, page {page}")
         return jsonify([{
             "sender": m["sender"],
             "message": m["message"],
+            "_id": str(m["_id"]),
             "reactions": m.get("reactions", {})
         } for m in messages])
     except Exception as e:
-        logger.error(f"Error loading more messages: {e}")
+        logger.error(f"Error loading more messages: {str(e)}")
         return jsonify([]), 500
 
 @app.route('/private/<receiver>')
@@ -234,14 +282,19 @@ def private_chat(receiver):
     if not username or not users_collection.find_one({"username": receiver}):
         logger.warning(f"Invalid private chat access: {receiver} by {username}")
         return redirect(url_for('dashboard'))
-    session['private_receiver'] = receiver
-    messages = private_messages_collection.find({
-        "$or": [
-            {"sender": username, "receiver": receiver},
-            {"sender": receiver, "receiver": username}
-        ]
-    }).sort("timestamp", -1).limit(50)
-    return render_template('private.html', username=username, receiver=receiver, messages=messages)
+    try:
+        session['private_receiver'] = receiver
+        messages = private_messages_collection.find({
+            "$or": [
+                {"sender": username, "receiver": receiver},
+                {"sender": receiver, "receiver": username}
+            ]
+        }).sort("timestamp", -1).limit(50)
+        logger.info(f"Rendering private chat with {receiver} for {username}")
+        return render_template('private.html', username=username, receiver=receiver, messages=messages)
+    except Exception as e:
+        logger.error(f"Error in private_chat route: {str(e)}")
+        return render_template('home.html', error=f"Terjadi kesalahan server: {str(e)}"), 500
 
 @app.route('/private/<receiver>/more/<int:page>')
 def private_more(receiver, page):
@@ -257,13 +310,15 @@ def private_more(receiver, page):
                 {"sender": receiver, "receiver": username}
             ]
         }).sort("timestamp", -1).skip(skip).limit(50)
+        logger.info(f"Loading more private messages for {username} and {receiver}, page {page}")
         return jsonify([{
             "sender": m["sender"],
             "message": m["message"],
+            "_id": str(m["_id"]),
             "reactions": m.get("reactions", {})
         } for m in messages])
     except Exception as e:
-        logger.error(f"Error loading more private messages: {e}")
+        logger.error(f"Error loading more private messages: {str(e)}")
         return jsonify([]), 500
 
 @app.route('/react/<message_type>/<message_id>', methods=["POST"])
@@ -283,7 +338,7 @@ def react(message_type, message_id):
         logger.info(f"Reaction added: {emoji} to {message_id} by {username}")
         return jsonify({"success": True})
     except Exception as e:
-        logger.error(f"Error adding reaction: {e}")
+        logger.error(f"Error adding reaction: {str(e)}")
         return jsonify({"error": "Reaction failed"}), 500
 
 @socketio.on('connect')
@@ -322,7 +377,7 @@ def handle_connect():
             emit('notification', {"message": f"{username} memulai chat pribadi dengan {private_receiver}"}, to=private_room)
             logger.info(f"User {username} connected to private chat with {private_receiver}")
     except Exception as e:
-        logger.error(f"Error on connect: {e}")
+        logger.error(f"Error on connect: {str(e)}")
 
 @socketio.on('room_message')
 def handle_room_message(payload):
@@ -350,7 +405,7 @@ def handle_room_message(payload):
         emit('notification', {"message": f"Pesan baru di room {room}"}, broadcast=True)
         logger.info(f"Message sent in room {room} by {username}")
     except Exception as e:
-        logger.error(f"Error sending room message: {e}")
+        logger.error(f"Error sending room message: {str(e)}")
 
 @socketio.on('private_message')
 def handle_private_message(payload):
@@ -379,7 +434,7 @@ def handle_private_message(payload):
         emit('notification', {"message": f"Pesan pribadi baru dari {username}"}, to=private_room)
         logger.info(f"Private message sent from {username} to {receiver}")
     except Exception as e:
-        logger.error(f"Error sending private message: {e}")
+        logger.error(f"Error sending private message: {str(e)}")
 
 @socketio.on('typing')
 def handle_typing(data):
@@ -390,10 +445,11 @@ def handle_typing(data):
         if room and room in rooms:
             emit('typing', {"username": username, "isTyping": data["isTyping"]}, to=room, include_self=False)
         if private_receiver:
-            private_room = f"private_{min(username, private_receiver)}_{max(username, private_receiver)}"
+            private_room = f"private_{min(username, receiver)}_{max(username, private_receiver)}"
             emit('typing', {"username": username, "isTyping": data["isTyping"]}, to=private_room, include_self=False)
+        logger.info(f"Typing event from {username}")
     except Exception as e:
-        logger.error(f"Error handling typing: {e}")
+        logger.error(f"Error handling typing: {str(e)}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -428,7 +484,7 @@ def handle_disconnect():
             leave_room(private_room)
             logger.info(f"User {username} disconnected from private chat with {private_receiver}")
     except Exception as e:
-        logger.error(f"Error on disconnect: {e}")
+        logger.error(f"Error on disconnect: {str(e)}")
 
 if __name__ == "__main__":
     socketio.run(app, debug=True, host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
