@@ -1,0 +1,7 @@
+flask
+flask-socketio
+pymongo
+gunicorn
+eventlet
+python-dotenv
+werkzeug
