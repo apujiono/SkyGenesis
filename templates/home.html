@@ -1,0 +1,28 @@
+{% extends 'base.html' %} {% block content %}
+<div id="home-container">
+  <h2>Masuk ke SkyGenesis Chat 💬</h2>
+  {% if error %}
+  <p id="error">{{error}}</p>
+  {% endif %}
+  <form method="post" id="chat-widget-home">
+    <div id="name-input">
+      <label for="username">Masukkan nama</label>
+      <input type="text" id="username" name="username" placeholder="Masukkan nama" value="{{username}}" />
+    </div>
+    <div>
+      <label for="code_length">Panjang kode room</label>
+      <select id="code_length" name="code_length">
+        <option value="6">6 karakter</option>
+        <option value="8">8 karakter</option>
+      </select>
+    </div>
+    <div>
+      <label for="code" id="code-label">Masukkan code room (jika join)</label>
+      <input type="text" id="code" name="code" placeholder="Masukkan code" value="{{code}}" />
+      <button type="submit" id="join" name="join" class="btn"><i class="fas fa-sign-in-alt"></i> Join</button>
+    </div>
+    <hr />
+    <button type="submit" id="create" name="create" class="btn"><i class="fas fa-plus"></i> Buat Room Baru</button>
+  </form>
+</div>
+{% endblock %}
