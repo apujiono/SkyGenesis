@@ -9,7 +9,7 @@
       <button type="submit" class="btn"><i class="fas fa-upload"></i> Upload Avatar</button>
     </form>
     <p><strong>Username:</strong> {{user.username}}</p>
-    <p><strong>Status:</strong> {{user.online ? 'Online' : 'Offline'}}</p>
+    <p><strong>Status:</strong> {% if user.online %}Online{% else %}Offline{% endif %}</p>
     <p><strong>Terakhir Dilihat:</strong> {{user.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}</p>
     <p><strong>Room yang diikuti:</strong> {{user.rooms|join(', ') or 'Belum ada room'}}</p>
   </div>
