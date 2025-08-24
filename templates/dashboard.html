@@ -1,0 +1,71 @@
+{% extends 'base.html' %} {% block content %}
+<div id="dashboard-container">
+  <h2>Selamat datang, {{username}}!</h2>
+  <div class="profile-section">
+    <h3>Profil</h3>
+    <img src="{{user.avatar and '/avatar/' + user.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
+    <form action="{{url_for('upload_avatar')}}" method="post" enctype="multipart/form-data">
+      <input type="file" name="avatar" accept="image/*" />
+      <button type="submit" class="btn"><i class="fas fa-upload"></i> Upload Avatar</button>
+    </form>
+    <p><strong>Username:</strong> {{user.username}}</p>
+    <p><strong>Status:</strong> {{user.online ? 'Online' : 'Offline'}}</p>
+    <p><strong>Terakhir Dilihat:</strong> {{user.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}</p>
+    <p><strong>Room yang diikuti:</strong> {{user.rooms|join(', ') or 'Belum ada room'}}</p>
+  </div>
+  <div class="notifications-section">
+    <h3>Notifikasi</h3>
+    <ul>
+      {% for notif in notifications %}
+      <li class="{{'unread' if not notif.read else ''}}">{{notif.message}} - {{notif.timestamp.strftime('%Y-%m-%d %H:%M:%S')}}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="users-section">
+    <h3>Pengguna Online</h3>
+    <input type="text" id="search-user" placeholder="Cari pengguna..." />
+    <div id="search-results"></div>
+    <a href="{{url_for('refresh_users')}}" class="btn"><i class="fas fa-sync-alt"></i> Refresh</a>
+    <ul>
+      {% for u in online_users %}
+      {% if u.username != username %}
+      <li>
+        <img src="{{u.avatar and '/avatar/' + u.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
+        {{u.username}} (Terakhir: {{u.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}) - 
+        <a href="{{url_for('private_chat', receiver=u.username)}}" class="btn btn-small"><i class="fas fa-comment"></i> Chat Pribadi</a>
+      </li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="rooms-section">
+    <h3>Room Anda</h3>
+    <ul>
+      {% for room in user.rooms %}
+      <li><a href="{{url_for('room', room_code=room)}}" class="btn btn-small"><i class="fas fa-users"></i> {{room}}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  <a href="/" class="btn btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+</div>
+<script>
+  document.getElementById("search-user").addEventListener("input", function() {
+    fetch('/search_users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'query=' + encodeURIComponent(this.value)
+    })
+    .then(response => response.json())
+    .then(data => {
+      let results = document.getElementById("search-results");
+      results.innerHTML = data.map(user => `
+        <div>
+          <img src="${user.avatar}" alt="Avatar" class="avatar" /> 
+          ${user.username} (Terakhir: ${user.last_seen}) - 
+          <a href="/private/${user.username}" class="btn btn-small"><i class="fas fa-comment"></i> Chat</a>
+        </div>
+      `).join('');
+    });
+  });
+</script>
+{% endblock %}
