@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+*.egg-info/
+
+# Environment
+.env
+
+# IDE
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Mac
+.DS_Store
