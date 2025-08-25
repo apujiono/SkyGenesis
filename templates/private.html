@@ -1,96 +1,92 @@
-{% extends 'base.html' %} {% block content %}
-<div id="private-container">
-  <h2>Private Chat dengan {{receiver}}</h2>
-  <div id="room-subsection">
-    <a href="{{url_for('dashboard')}}" class="btn"><i class="fas fa-arrow-left"></i> Kembali ke Dashboard</a>
-    <a href="/" class="btn btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-  </div>
-  <div id="chat-room-widget">
-    <div id="typing-indicator"></div>
-    <div id="msgs-container">
-      <ul id="messages"></ul>
-      <button id="load-more" class="btn" onclick="loadMore(1)">Load More</button>
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-3">
+  <h2>Chat dengan {{receiver}}</h2>
+  <a href="{{url_for('dashboard')}}" class="btn btn-secondary btn-sm mb-2"><i class="fas fa-arrow-left"></i> Kembali ke Dashboard</a>
+  <div class="chat-container" style="height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+    {% for message in messages %}
+    <div class="chat-bubble {{ 'me' if message.sender == username else 'other' }} mb-2 p-2 rounded">
+      <strong>{{message.sender}}</strong>: {{message.message}}
+      <small class="d-block">{{message.timestamp.strftime('%H:%M')}}</small>
+      <div class="reactions">
+        {% for emoji, users in message.get('reactions', {}).items() %}
+        <span>{{emoji}} ({{users|length}})</span>
+        {% endfor %}
+      </div>
+      <select onchange="addReaction('{{message._id}}', 'private', this.value)" class="form-select form-select-sm d-inline-block w-auto">
+        <option value="">Pilih Reaksi</option>
+        <option value="😊">😊</option>
+        <option value="👍">👍</option>
+        <option value="❤️">❤️</option>
+      </select>
     </div>
-    <div id="message-box">
-      <input type="text" placeholder="Masukkan pesan" id="message-input" name="message" />
-      <button type="submit" id="send-btn" onclick="sendMessage()" class="btn"><i class="fas fa-paper-plane"></i> Kirim</button>
-    </div>
+    {% endfor %}
   </div>
-  <script type="text/javascript">
-    var socketio = io();
-    var page = 1;
-    var isTyping = false;
-    socketio.on("private_message", function (message) { createChatItem(message._id, message.message, message.sender, message.reactions) });
-    socketio.on("typing", function (data) {
-      var indicator = document.getElementById("typing-indicator");
-      if (data.isTyping) {
-        indicator.innerHTML = `<p>${data.username} sedang mengetik...</p>`;
-      } else {
-        indicator.innerHTML = "";
-      }
-    });
-    function createChatItem(id, message, sender, reactions) {
-      var messages = document.getElementById("messages");
-      var senderIsUser = "{{username}}" === sender;
-      var reactionHtml = Object.entries(reactions || {}).map(([emoji, users]) => 
-        `<span class="reaction">${emoji} ${users.length}</span>`
-      ).join(' ');
-      var content = `
-        <li class="message-item ${senderIsUser ? "self-message-item" : "peer-message-item"}" data-id="${id}">
-            <p>${message}</p>
-            <small class="${senderIsUser ? "muted-text" : "muted-text-white"}">${new Date().toLocaleString()}</small>
-            <div class="reactions">${reactionHtml}</div>
-            <button onclick="react('${id}', '😊')">😊</button>
-            <button onclick="react('${id}', '👍')">👍</button>
-        </li>
-      `;
-      messages.innerHTML += content;
-      messages.scrollTop = messages.scrollHeight;
-    }
-    function sendMessage() {
-      var msgInput = document.getElementById("message-input");
-      if (msgInput.value === "") return;
-      var msg = msgInput.value;
-      socketio.emit("private_message", { message: msg });
-      msgInput.value = "";
-      socketio.emit("typing", { isTyping: false });
-    }
-    function loadMore(nextPage) {
-      fetch(`/private/{{receiver}}/more/${nextPage}`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.length > 0) {
-            data.reverse().forEach(msg => createChatItem(msg._id, msg.message, msg.sender, msg.reactions));
-            page = nextPage;
-            document.getElementById("load-more").onclick = () => loadMore(page + 1);
-          } else {
-            document.getElementById("load-more").style.display = "none";
-          }
-        });
-    }
-    function react(messageId, emoji) {
-      fetch(`/react/private/${messageId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `emoji=${encodeURIComponent(emoji)}`
-      }).then(() => location.reload());
-    }
-    document.getElementById("message-input").addEventListener("input", function() {
-      if (!isTyping) {
-        isTyping = true;
-        socketio.emit("typing", { isTyping: true });
-      }
-      clearTimeout(window.typingTimeout);
-      window.typingTimeout = setTimeout(() => {
-        isTyping = false;
-        socketio.emit("typing", { isTyping: false });
-      }, 2000);
-    });
-  </script>
-  {% for message in messages %}
-  <script type="text/javascript">
-    createChatItem("{{message._id}}", "{{message.message}}", "{{message.sender}}", {{message.reactions|tojson}});
-  </script>
-  {% endfor %}
+  <div id="typing-indicator" class="mt-2"></div>
+  <form id="message-form" class="mt-2">
+    <div class="input-group">
+      <input type="text" id="message-input" class="form-control" placeholder="Ketik pesan..." />
+      <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Kirim</button>
+    </div>
+  </form>
 </div>
+<script>
+  const socket = io();
+  socket.on('connect', () => {
+    socket.emit('connect', {});
+  });
+
+  socket.on('private_message', (msg) => {
+    const chatContainer = document.querySelector('.chat-container');
+    const div = document.createElement('div');
+    div.className = `chat-bubble ${msg.sender === '{{username}}' ? 'me' : 'other'} mb-2 p-2 rounded`;
+    div.innerHTML = `<strong>${msg.sender}</strong>: ${msg.message}<small class="d-block">${new Date(msg.timestamp).toLocaleTimeString()}</small><div class="reactions"></div>`;
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  });
+
+  socket.on('typing', (data) => {
+    const typingIndicator = document.getElementById('typing-indicator');
+    if (data.isTyping) {
+      typingIndicator.innerHTML = `<small>${data.username} sedang mengetik...</small>`;
+    } else {
+      typingIndicator.innerHTML = '';
+    }
+  });
+
+  document.getElementById('message-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('message-input');
+    if (input.value.trim()) {
+      socket.emit('private_message', { message: input.value });
+      input.value = '';
+    }
+  });
+
+  document.getElementById('message-input').addEventListener('input', () => {
+    socket.emit('typing', { isTyping: true });
+    clearTimeout(window.typingTimeout);
+    window.typingTimeout = setTimeout(() => {
+      socket.emit('typing', { isTyping: false });
+    }, 1000);
+  });
+
+  function addReaction(messageId, messageType, emoji) {
+    fetch(`/react/${messageType}/${messageId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `emoji=${encodeURIComponent(emoji)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        location.reload();
+      } else {
+        alert(data.error);
+      }
+    });
+  }
+
+  document.querySelector('.chat-container').scrollTop = document.querySelector('.chat-container').scrollHeight;
+</script>
 {% endblock %}
