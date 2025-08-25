@@ -1,69 +1,79 @@
-{% extends 'base.html' %} {% block content %}
-<div id="dashboard-container">
-  <h2>Selamat datang, {{username}}!</h2>
-  <div class="profile-section">
-    <h3>Profil</h3>
-    <img src="{{user.avatar and '/avatar/' + user.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
-    <form action="{{url_for('upload_avatar')}}" method="post" enctype="multipart/form-data">
-      <input type="file" name="avatar" accept="image/*" />
-      <button type="submit" class="btn"><i class="fas fa-upload"></i> Upload Avatar</button>
-    </form>
-    <p><strong>Username:</strong> {{user.username}}</p>
-    <p><strong>Status:</strong> {% if user.online %}Online{% else %}Offline{% endif %}</p>
-    <p><strong>Terakhir Dilihat:</strong> {{user.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}</p>
-    <p><strong>Room yang diikuti:</strong> {{user.rooms|join(', ') or 'Belum ada room'}}</p>
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-3">
+  <h2 class="text-center">Selamat datang, {{username}}!</h2>
+  <div class="card mb-3">
+    <div class="card-header">Profil</div>
+    <div class="card-body">
+      <img src="{{user.avatar and '/avatar/' + user.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar rounded-circle" />
+      <form action="{{url_for('upload_avatar')}}" method="post" enctype="multipart/form-data" class="mt-2">
+        <input type="file" name="avatar" accept="image/*" class="form-control" />
+        <button type="submit" class="btn btn-primary btn-sm mt-1"><i class="fas fa-upload"></i> Upload Avatar</button>
+      </form>
+      <p><strong>Username:</strong> {{user.username}}</p>
+      <p><strong>Status:</strong> {% if user.online %}Online{% else %}Offline{% endif %}</p>
+      <p><strong>Terakhir Dilihat:</strong> {{user.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}</p>
+      <p><strong>Room yang diikuti:</strong> {{user.rooms|join(', ') or 'Belum ada room'}}</p>
+    </div>
   </div>
-  <div class="notifications-section">
-    <h3>Notifikasi</h3>
-    <ul>
-      {% for notif in notifications %}
-      <li class="{{'unread' if not notif.read else ''}}">{{notif.message}} - {{notif.timestamp.strftime('%Y-%m-%d %H:%M:%S')}}</li>
-      {% endfor %}
-    </ul>
+  <div class="card mb-3">
+    <div class="card-header">Notifikasi <span class="badge bg-primary">{{notifications|selectattr('read', 'equalto', false)|list|length}}</span></div>
+    <div class="card-body">
+      <ul class="list-group">
+        {% for notif in notifications %}
+        <li class="list-group-item {{'list-group-item-warning' if not notif.read else ''}}">{{notif.message}} - {{notif.timestamp.strftime('%Y-%m-%d %H:%M:%S')}}</li>
+        {% endfor %}
+      </ul>
+    </div>
   </div>
-  <div class="friends-section">
-    <h3>Daftar Teman</h3>
-    <ul>
-      {% for friend in friends %}
-      <li>
-        <img src="{{friend.avatar and '/avatar/' + friend.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
-        {{friend.username}} (Terakhir: {{friend.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}) - 
-        <a href="{{url_for('private_chat', receiver=friend.username)}}" class="btn btn-small"><i class="fas fa-comment"></i> Chat Pribadi</a>
-      </li>
-      {% endfor %}
-    </ul>
+  <div class="card mb-3">
+    <div class="card-header">Daftar Teman</div>
+    <div class="card-body">
+      <ul class="list-group">
+        {% for friend in friends %}
+        <li class="list-group-item">
+          <img src="{{friend.avatar and '/avatar/' + friend.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar rounded-circle" />
+          {{friend.username}} (Terakhir: {{friend.last_seen.strftime('%Y-%m-%d %H:%M:%S')}})
+          <a href="{{url_for('private_chat', receiver=friend.username)}}" class="btn btn-primary btn-sm"><i class="fas fa-comment"></i> Chat</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
   </div>
-  <div class="users-section">
-    <h3>Cari Pengguna</h3>
-    <input type="text" id="search-user" placeholder="Cari pengguna..." />
-    <div id="search-results"></div>
-    <a href="{{url_for('refresh_users')}}" class="btn"><i class="fas fa-sync-alt"></i> Refresh</a>
-    <h4>Pengguna Online</h4>
-    <ul id="online-users">
-      {% for u in online_users %}
-      {% if u.username != username %}
-      <li>
-        <img src="{{u.avatar and '/avatar/' + u.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
-        {{u.username}} (Terakhir: {{u.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}) - 
-        <button onclick="addFriend('{{u.username}}')" class="btn btn-small">Tambah Teman</button>
-        <a href="{{url_for('private_chat', receiver=u.username)}}" class="btn btn-small"><i class="fas fa-comment"></i> Chat Pribadi</a>
-      </li>
-      {% endif %}
-      {% endfor %}
-    </ul>
+  <div class="card mb-3">
+    <div class="card-header">Cari Pengguna</div>
+    <div class="card-body">
+      <input type="text" id="search-user" class="form-control mb-2" placeholder="Cari pengguna..." />
+      <div id="search-results" class="mb-2"></div>
+      <a href="{{url_for('refresh_users')}}" class="btn btn-secondary btn-sm"><i class="fas fa-sync-alt"></i> Refresh</a>
+      <h5>Pengguna Online</h5>
+      <ul class="list-group">
+        {% for u in online_users %}
+        {% if u.username != username %}
+        <li class="list-group-item">
+          <img src="{{u.avatar and '/avatar/' + u.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar rounded-circle" />
+          {{u.username}} (Terakhir: {{u.last_seen.strftime('%Y-%m-%d %H:%M:%S')}})
+          <button onclick="addFriend('{{u.username}}')" class="btn btn-success btn-sm">Tambah Teman</button>
+          <a href="{{url_for('private_chat', receiver=u.username)}}" class="btn btn-primary btn-sm"><i class="fas fa-comment"></i> Chat</a>
+        </li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
   </div>
-  <div class="rooms-section">
-    <h3>Room Anda</h3>
-    <ul>
-      {% for room in user.rooms %}
-      <li><a href="{{url_for('room', room_code=room)}}" class="btn btn-small"><i class="fas fa-users"></i> {{room}}</a></li>
-      {% endfor %}
-    </ul>
+  <div class="card mb-3">
+    <div class="card-header">Room Anda</div>
+    <div class="card-body">
+      <ul class="list-group">
+        {% for room in user.rooms %}
+        <li class="list-group-item"><a href="{{url_for('room', room_code=room)}}" class="btn btn-primary btn-sm"><i class="fas fa-users"></i> {{room}}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
   </div>
-  <a href="/" class="btn btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+  <a href="/" class="btn btn-danger btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</a>
 </div>
 <script>
-  // Debounce untuk autocomplete
   function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -76,7 +86,6 @@
     };
   }
 
-  // Pencarian pengguna dengan autocomplete
   document.getElementById("search-user").addEventListener("input", debounce(function() {
     const query = this.value;
     fetch('/search_users', {
@@ -91,11 +100,11 @@
     .then(data => {
       const results = document.getElementById("search-results");
       results.innerHTML = data.map(user => `
-        <div>
-          <img src="${user.avatar}" alt="Avatar" class="avatar" /> 
-          ${user.username} (Terakhir: ${user.last_seen}) - 
-          <button onclick="addFriend('${user.username}')" class="btn btn-small">Tambah Teman</button>
-          <a href="/private/${user.username}" class="btn btn-small"><i class="fas fa-comment"></i> Chat</a>
+        <div class="list-group-item">
+          <img src="${user.avatar}" alt="Avatar" class="avatar rounded-circle" /> 
+          ${user.username} (Terakhir: ${user.last_seen})
+          <button onclick="addFriend('${user.username}')" class="btn btn-success btn-sm">Tambah Teman</button>
+          <a href="/private/${user.username}" class="btn btn-primary btn-sm"><i class="fas fa-comment"></i> Chat</a>
         </div>
       `).join('');
     })
@@ -105,7 +114,6 @@
     });
   }, 300));
 
-  // Fungsi untuk menambah teman
   function addFriend(username) {
     fetch(`/add_friend/${username}`, {
       method: 'POST',
