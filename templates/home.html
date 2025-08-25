@@ -1,28 +1,32 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container mt-5">
-  <h1 class="text-center">SkyGenesis Chat</h1>
-  <form method="post" class="mt-4">
-    <div class="mb-3">
-      <label for="username" class="form-label">Username</label>
-      <input type="text" class="form-control" id="username" name="username" value="{{username or ''}}" required>
+  <div class="card animate__animated animate__fadeIn">
+    <div class="card-header text-center">SkyGenesis Chat</div>
+    <div class="card-body">
+      <form method="post">
+        <div class="mb-3">
+          <label for="username" class="form-label">Username</label>
+          <input type="text" class="form-control" id="username" name="username" value="{{username or ''}}" required>
+        </div>
+        <div class="mb-3">
+          <label for="code" class="form-label">Room Code (untuk join)</label>
+          <input type="text" class="form-control" id="code" name="code" value="{{code or ''}}">
+        </div>
+        <div class="mb-3">
+          <label for="code_length" class="form-label">Panjang Code (untuk create)</label>
+          <select class="form-select" id="code_length" name="code_length">
+            <option value="6">6</option>
+            <option value="8">8</option>
+          </select>
+        </div>
+        {% if error %}
+        <div class="alert alert-danger animate__animated animate__shakeX">{{error}}</div>
+        {% endif %}
+        <button type="submit" name="create" value="true" class="btn btn-primary w-100 mb-2">Buat Room</button>
+        <button type="submit" name="join" value="true" class="btn btn-secondary w-100">Join Room</button>
+      </form>
     </div>
-    <div class="mb-3">
-      <label for="code" class="form-label">Room Code (untuk join)</label>
-      <input type="text" class="form-control" id="code" name="code" value="{{code or ''}}">
-    </div>
-    <div class="mb-3">
-      <label for="code_length" class="form-label">Panjang Code (untuk create)</label>
-      <select class="form-select" id="code_length" name="code_length">
-        <option value="6">6</option>
-        <option value="8">8</option>
-      </select>
-    </div>
-    {% if error %}
-    <div class="alert alert-danger">{{error}}</div>
-    {% endif %}
-    <button type="submit" name="create" value="true" class="btn btn-primary">Buat Room</button>
-    <button type="submit" name="join" value="true" class="btn btn-secondary">Join Room</button>
-  </form>
+  </div>
 </div>
 {% endblock %}
