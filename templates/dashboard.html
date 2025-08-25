@@ -1,137 +1,105 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container mt-3">
-  <h2 class="text-center">Selamat datang, {{username}}!</h2>
-  <div class="card mb-3">
+  <div class="card mb-3 animate__animated animate__fadeIn">
     <div class="card-header">Profil</div>
     <div class="card-body">
-      <img src="{{user.avatar and '/avatar/' + user.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar rounded-circle" />
-      <form action="{{url_for('upload_avatar')}}" method="post" enctype="multipart/form-data" class="mt-2">
+      <div class="d-flex align-items-center mb-3">
+        <img src="{{user.avatar and '/avatar/' + user.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
+        <h4>{{username}}</h4>
+      </div>
+      <form action="{{url_for('upload_avatar')}}" method="post" enctype="multipart/form-data" class="mb-3">
         <input type="file" name="avatar" accept="image/*" class="form-control" />
         <button type="submit" class="btn btn-primary btn-sm mt-1"><i class="fas fa-upload"></i> Upload Avatar</button>
       </form>
-      <p><strong>Username:</strong> {{user.username}}</p>
-      <p><strong>Status:</strong> {% if user.online %}Online{% else %}Offline{% endif %}</p>
+      <form action="{{url_for('update_status')}}" method="post" class="mb-3">
+        <div class="input-group">
+          <input type="text" name="status" class="form-control" placeholder="Update status..." value="{{user.status or ''}}">
+          <button type="submit" class="btn btn-primary"><i class="fas fa-edit"></i> Update</button>
+        </div>
+      </form>
+      <p><strong>Status:</strong> <span id="user-status">{{user.status or 'No status'}}</span></p>
+      <p><strong>Online:</strong> <span id="online-status">{% if user.online %}Online{% else %}Offline{% endif %}</span></p>
       <p><strong>Terakhir Dilihat:</strong> {{user.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}</p>
       <p><strong>Room yang diikuti:</strong> {{user.rooms|join(', ') or 'Belum ada room'}}</p>
+      <a href="/" class="btn btn-danger btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
   </div>
-  <div class="card mb-3">
+  <div class="card mb-3 animate__animated animate__fadeIn">
     <div class="card-header">Notifikasi <span class="badge bg-primary">{{notifications|selectattr('read', 'equalto', false)|list|length}}</span></div>
     <div class="card-body">
       <ul class="list-group">
         {% for notif in notifications %}
-        <li class="list-group-item {{'list-group-item-warning' if not notif.read else ''}}">{{notif.message}} - {{notif.timestamp.strftime('%Y-%m-%d %H:%M:%S')}}</li>
-        {% endfor %}
-      </ul>
-    </div>
-  </div>
-  <div class="card mb-3">
-    <div class="card-header">Daftar Teman</div>
-    <div class="card-body">
-      <ul class="list-group">
-        {% for friend in friends %}
-        <li class="list-group-item">
-          <img src="{{friend.avatar and '/avatar/' + friend.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar rounded-circle" />
-          {{friend.username}} (Terakhir: {{friend.last_seen.strftime('%Y-%m-%d %H:%M:%S')}})
-          <a href="{{url_for('private_chat', receiver=friend.username)}}" class="btn btn-primary btn-sm"><i class="fas fa-comment"></i> Chat</a>
+        <li class="list-group-item {{'list-group-item-warning' if not notif.read else ''}} animate__animated animate__fadeIn">
+          {{notif.message}} - {{notif.timestamp.strftime('%Y-%m-%d %H:%M:%S')}}
         </li>
         {% endfor %}
       </ul>
     </div>
   </div>
-  <div class="card mb-3">
+  <div class="card mb-3 animate__animated animate__fadeIn">
+    <div class="card-header">Daftar Teman</div>
+    <div class="card-body">
+      <ul class="list-group">
+        {% for friend in friends %}
+        <li class="list-group-item d-flex align-items-center animate__animated animate__fadeIn">
+          <img src="{{friend.avatar and '/avatar/' + friend.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
+          <div>
+            <strong>{{friend.username}}</strong><br>
+            <small>{{friend.status or 'No status'}}</small><br>
+            <small>Terakhir: {{friend.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}</small>
+          </div>
+          <a href="{{url_for('private_chat', receiver=friend.username)}}" class="btn btn-primary btn-sm ms-auto"><i class="fas fa-comment"></i> Chat</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  <div class="card mb-3 animate__animated animate__fadeIn">
     <div class="card-header">Cari Pengguna</div>
     <div class="card-body">
       <input type="text" id="search-user" class="form-control mb-2" placeholder="Cari pengguna..." />
       <div id="search-results" class="mb-2"></div>
-      <a href="{{url_for('refresh_users')}}" class="btn btn-secondary btn-sm"><i class="fas fa-sync-alt"></i> Refresh</a>
+      <a href="{{url_for('refresh_users')}}" class="btn btn-secondary btn-sm mb-2"><i class="fas fa-sync-alt"></i> Refresh</a>
       <h5>Pengguna Online</h5>
       <ul class="list-group">
         {% for u in online_users %}
         {% if u.username != username %}
-        <li class="list-group-item">
-          <img src="{{u.avatar and '/avatar/' + u.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar rounded-circle" />
-          {{u.username}} (Terakhir: {{u.last_seen.strftime('%Y-%m-%d %H:%M:%S')}})
-          <button onclick="addFriend('{{u.username}}')" class="btn btn-success btn-sm">Tambah Teman</button>
-          <a href="{{url_for('private_chat', receiver=u.username)}}" class="btn btn-primary btn-sm"><i class="fas fa-comment"></i> Chat</a>
+        <li class="list-group-item d-flex align-items-center animate__animated animate__fadeIn">
+          <img src="{{u.avatar and '/avatar/' + u.username or 'https://via.placeholder.com/40'}}" alt="Avatar" class="avatar" />
+          <div>
+            <strong>{{u.username}}</strong><br>
+            <small>{{u.status or 'No status'}}</small><br>
+            <small>Terakhir: {{u.last_seen.strftime('%Y-%m-%d %H:%M:%S')}}</small>
+          </div>
+          <div class="ms-auto">
+            <button onclick="addFriend('{{u.username}}')" class="btn btn-success btn-sm">Tambah Teman</button>
+            <a href="{{url_for('private_chat', receiver=u.username)}}" class="btn btn-primary btn-sm"><i class="fas fa-comment"></i> Chat</a>
+          </div>
         </li>
         {% endif %}
         {% endfor %}
       </ul>
     </div>
   </div>
-  <div class="card mb-3">
+  <div class="card mb-3 animate__animated animate__fadeIn">
     <div class="card-header">Room Anda</div>
     <div class="card-body">
       <ul class="list-group">
         {% for room in user.rooms %}
-        <li class="list-group-item"><a href="{{url_for('room', room_code=room)}}" class="btn btn-primary btn-sm"><i class="fas fa-users"></i> {{room}}</a></li>
+        <li class="list-group-item animate__animated animate__fadeIn">
+          <a href="{{url_for('room', room_code=room)}}" class="btn btn-primary btn-sm"><i class="fas fa-users"></i> {{room}}</a>
+        </li>
         {% endfor %}
       </ul>
     </div>
   </div>
-  <a href="/" class="btn btn-danger btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</a>
 </div>
 <script>
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
-
-  document.getElementById("search-user").addEventListener("input", debounce(function() {
-    const query = this.value;
-    fetch('/search_users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'query=' + encodeURIComponent(query)
-    })
-    .then(response => {
-      if (!response.ok) throw new Error('Search failed');
-      return response.json();
-    })
-    .then(data => {
-      const results = document.getElementById("search-results");
-      results.innerHTML = data.map(user => `
-        <div class="list-group-item">
-          <img src="${user.avatar}" alt="Avatar" class="avatar rounded-circle" /> 
-          ${user.username} (Terakhir: ${user.last_seen})
-          <button onclick="addFriend('${user.username}')" class="btn btn-success btn-sm">Tambah Teman</button>
-          <a href="/private/${user.username}" class="btn btn-primary btn-sm"><i class="fas fa-comment"></i> Chat</a>
-        </div>
-      `).join('');
-    })
-    .catch(error => {
-      console.error('Error searching users:', error);
-      document.getElementById("search-results").innerHTML = '<p>Error loading users</p>';
-    });
-  }, 300));
-
-  function addFriend(username) {
-    fetch(`/add_friend/${username}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.success) {
-        alert('Teman berhasil ditambahkan!');
-        location.reload();
-      } else {
-        alert(data.error);
-      }
-    })
-    .catch(error => {
-      console.error('Error adding friend:', error);
-      alert('Gagal menambah teman');
-    });
-  }
+  socket.on('status_update', (data) => {
+    if (data.username === '{{username}}') {
+      document.getElementById('online-status').textContent = data.online ? 'Online' : 'Offline';
+    }
+  });
 </script>
 {% endblock %}
