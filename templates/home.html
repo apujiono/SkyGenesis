@@ -1,28 +1,28 @@
-{% extends 'base.html' %} {% block content %}
-<div id="home-container">
-  <h2>Masuk ke SkyGenesis Chat 💬</h2>
-  {% if error %}
-  <p id="error">{{error}}</p>
-  {% endif %}
-  <form method="post" id="chat-widget-home">
-    <div id="name-input">
-      <label for="username">Masukkan nama</label>
-      <input type="text" id="username" name="username" placeholder="Masukkan nama" value="{{username}}" />
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-5">
+  <h1 class="text-center">SkyGenesis Chat</h1>
+  <form method="post" class="mt-4">
+    <div class="mb-3">
+      <label for="username" class="form-label">Username</label>
+      <input type="text" class="form-control" id="username" name="username" value="{{username or ''}}" required>
     </div>
-    <div>
-      <label for="code_length">Panjang kode room</label>
-      <select id="code_length" name="code_length">
-        <option value="6">6 karakter</option>
-        <option value="8">8 karakter</option>
+    <div class="mb-3">
+      <label for="code" class="form-label">Room Code (untuk join)</label>
+      <input type="text" class="form-control" id="code" name="code" value="{{code or ''}}">
+    </div>
+    <div class="mb-3">
+      <label for="code_length" class="form-label">Panjang Code (untuk create)</label>
+      <select class="form-select" id="code_length" name="code_length">
+        <option value="6">6</option>
+        <option value="8">8</option>
       </select>
     </div>
-    <div>
-      <label for="code" id="code-label">Masukkan code room (jika join)</label>
-      <input type="text" id="code" name="code" placeholder="Masukkan code" value="{{code}}" />
-      <button type="submit" id="join" name="join" class="btn"><i class="fas fa-sign-in-alt"></i> Join</button>
-    </div>
-    <hr />
-    <button type="submit" id="create" name="create" class="btn"><i class="fas fa-plus"></i> Buat Room Baru</button>
+    {% if error %}
+    <div class="alert alert-danger">{{error}}</div>
+    {% endif %}
+    <button type="submit" name="create" value="true" class="btn btn-primary">Buat Room</button>
+    <button type="submit" name="join" value="true" class="btn btn-secondary">Join Room</button>
   </form>
 </div>
 {% endblock %}
