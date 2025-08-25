@@ -1,3 +1,5 @@
+#### `app.py`
+```python
 import random
 from string import ascii_letters
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify, send_file
@@ -32,7 +34,7 @@ if not app.config["SECRET_KEY"]:
     logger.error("FLASK_SECRET_KEY is not set")
     raise ValueError("FLASK_SECRET_KEY is not set")
 
-socketio = SocketIO(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # MongoDB setup with automatic collection creation
 try:
@@ -45,7 +47,6 @@ try:
     notifications_collection = db.notifications
     rooms_collection = db.rooms
     fs = GridFS(db)
-    # Otomatis buat collection jika belum ada
     collections_to_create = ["users", "rooms", "room_messages", "private_messages", "notifications"]
     for collection in collections_to_create:
         if collection not in db.list_collection_names():
@@ -57,6 +58,7 @@ except Exception as e:
     raise
 
 def generate_room_code(length: int) -> str:
+    """Generate a unique room code of specified length."""
     try:
         logger.info(f"Generating room code with length {length}")
         existing_codes = [r["code"] for r in rooms_collection.find()]
@@ -72,6 +74,7 @@ def generate_room_code(length: int) -> str:
 
 @app.route('/', methods=["GET", "POST"])
 def home():
+    """Handle login and room creation/joining."""
     session.clear()
     if request.method == "POST":
         try:
@@ -95,7 +98,8 @@ def home():
                     "rooms": [],
                     "friends": [],
                     "avatar": None,
-                    "last_seen": datetime.utcnow()
+                    "last_seen": datetime.utcnow(),
+                    "status": "Hey, I'm using SkyGenesis!"
                 })
             else:
                 logger.info(f"Updating existing user: {username}")
@@ -123,6 +127,7 @@ def home():
                     "timestamp": datetime.utcnow(),
                     "read": False
                 })
+                emit('notification', {"message": f"Kamu membuat room {room_code}"}, to=username)
                 logger.info(f"Room created: {room_code} by {username}")
             elif join != False:
                 if not code:
@@ -147,6 +152,7 @@ def home():
                     "timestamp": datetime.utcnow(),
                     "read": False
                 })
+                emit('notification', {"message": f"Kamu bergabung ke room {room_code}"}, to=username)
                 logger.info(f"User {username} joined room: {room_code}")
             else:
                 logger.warning("Neither create nor join action specified")
@@ -163,6 +169,7 @@ def home():
 
 @app.route('/dashboard')
 def dashboard():
+    """Render user dashboard with profile, notifications, friends, and rooms."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for dashboard")
@@ -172,6 +179,10 @@ def dashboard():
         if not user:
             logger.error(f"User {username} not found in database")
             return redirect(url_for('home'))
+        users_collection.update_one(
+            {"username": username},
+            {"$set": {"online": True, "last_seen": datetime.utcnow()}}
+        )
         online_users = list(users_collection.find({"online": True}))
         notifications = list(notifications_collection.find({"username": username}).sort("timestamp", -1).limit(10))
         friends = list(users_collection.find({"username": {"$in": user.get("friends", [])}}))
@@ -190,6 +201,7 @@ def dashboard():
 
 @app.route('/refresh_users')
 def refresh_users():
+    """Refresh user list and notifications."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for refresh_users")
@@ -199,6 +211,10 @@ def refresh_users():
         if not user:
             logger.error(f"User {username} not found in database")
             return redirect(url_for('home'))
+        users_collection.update_one(
+            {"username": username},
+            {"$set": {"online": True, "last_seen": datetime.utcnow()}}
+        )
         online_users = list(users_collection.find({"online": True}))
         notifications = list(notifications_collection.find({"username": username}).sort("timestamp", -1).limit(10))
         friends = list(users_collection.find({"username": {"$in": user.get("friends", [])}}))
@@ -217,18 +233,20 @@ def refresh_users():
 
 @app.route('/search_users', methods=["POST"])
 def search_users():
+    """Search users by username with autocomplete."""
     try:
         query = request.form.get('query', '')
         logger.info(f"Searching users with query: {query}")
         users = list(users_collection.find(
             {"username": {"$regex": query, "$options": "i"}},
-            {"username": 1, "avatar": 1, "last_seen": 1}
+            {"username": 1, "avatar": 1, "last_seen": 1, "status": 1}
         ).limit(10))
         logger.info(f"Found {len(users)} users for query: {query}")
         return jsonify([{
             "username": u["username"],
             "avatar": f"/avatar/{u['username']}" if u.get("avatar") else "https://via.placeholder.com/40",
-            "last_seen": u["last_seen"].strftime("%Y-%m-%d %H:%M:%S")
+            "last_seen": u["last_seen"].strftime("%Y-%m-%d %H:%M:%S"),
+            "status": u.get("status", "No status")
         } for u in users])
     except Exception as e:
         logger.error(f"Error in search_users: {str(e)}")
@@ -236,6 +254,7 @@ def search_users():
 
 @app.route('/add_friend/<friend_username>', methods=["POST"])
 def add_friend(friend_username):
+    """Add a friend directly to the user's friend list."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for add_friend")
@@ -261,6 +280,7 @@ def add_friend(friend_username):
             "timestamp": datetime.utcnow(),
             "read": False
         })
+        emit('notification', {"message": f"{username} menambahkan kamu sebagai teman"}, to=friend_username)
         logger.info(f"Friend added: {friend_username} by {username}")
         return jsonify({"success": True})
     except Exception as e:
@@ -269,6 +289,7 @@ def add_friend(friend_username):
 
 @app.route('/avatar/<username>')
 def get_avatar(username):
+    """Serve user avatar from GridFS."""
     try:
         logger.info(f"Fetching avatar for {username}")
         user = users_collection.find_one({"username": username})
@@ -283,6 +304,7 @@ def get_avatar(username):
 
 @app.route('/upload_avatar', methods=["POST"])
 def upload_avatar():
+    """Upload user avatar to GridFS."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for avatar upload")
@@ -304,14 +326,44 @@ def upload_avatar():
                     "timestamp": datetime.utcnow(),
                     "read": False
                 })
+                emit('notification', {"message": "Avatar berhasil diupload"}, to=username)
                 logger.info(f"Avatar uploaded for {username}")
         return redirect(url_for('dashboard'))
     except Exception as e:
         logger.error(f"Error uploading avatar: {str(e)}")
         return redirect(url_for('dashboard'))
 
+@app.route('/update_status', methods=["POST"])
+def update_status():
+    """Update user status message."""
+    username = session.get('username')
+    if not username:
+        logger.warning("No username in session for update_status")
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        status = request.form.get('status')
+        if not status:
+            return jsonify({"error": "Status required"}), 400
+        users_collection.update_one(
+            {"username": username},
+            {"$set": {"status": status}}
+        )
+        notifications_collection.insert_one({
+            "username": username,
+            "message": "Status berhasil diperbarui",
+            "timestamp": datetime.utcnow(),
+            "read": False
+        })
+        emit('notification', {"message": "Status berhasil diperbarui"}, to=username)
+        logger.info(f"Status updated for {username}")
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error updating status: {str(e)}")
+        return jsonify({"error": "Failed to update status"}), 500
+
 @app.route('/room/<room_code>')
 def room(room_code):
+    """Render group chat room."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for room access")
@@ -331,6 +383,7 @@ def room(room_code):
 
 @app.route('/room/<room_code>/more/<int:page>')
 def room_more(room_code, page):
+    """Load more messages for group chat."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for room more")
@@ -347,7 +400,8 @@ def room_more(room_code, page):
             "sender": m["sender"],
             "message": m["message"],
             "_id": str(m["_id"]),
-            "reactions": m.get("reactions", {})
+            "reactions": m.get("reactions", {}),
+            "read_by": m.get("read_by", [])
         } for m in messages])
     except Exception as e:
         logger.error(f"Error loading more messages: {str(e)}")
@@ -355,6 +409,7 @@ def room_more(room_code, page):
 
 @app.route('/private/<receiver>')
 def private_chat(receiver):
+    """Render private chat."""
     username = session.get('username')
     if not username or not users_collection.find_one({"username": receiver}):
         logger.warning(f"Invalid private chat access: {receiver} by {username}")
@@ -375,6 +430,7 @@ def private_chat(receiver):
 
 @app.route('/private/<receiver>/more/<int:page>')
 def private_more(receiver, page):
+    """Load more private messages."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for private more")
@@ -392,7 +448,8 @@ def private_more(receiver, page):
             "sender": m["sender"],
             "message": m["message"],
             "_id": str(m["_id"]),
-            "reactions": m.get("reactions", {})
+            "reactions": m.get("reactions", {}),
+            "read_by": m.get("read_by", [])
         } for m in messages])
     except Exception as e:
         logger.error(f"Error loading more private messages: {str(e)}")
@@ -400,28 +457,73 @@ def private_more(receiver, page):
 
 @app.route('/react/<message_type>/<message_id>', methods=["POST"])
 def react(message_type, message_id):
+    """Add reaction to a message."""
     username = session.get('username')
     if not username:
         logger.warning("No username in session for reaction")
         return jsonify({"error": "Unauthorized"}), 401
     try:
         emoji = request.form.get('emoji')
+        if not emoji:
+            logger.warning("No emoji provided for reaction")
+            return jsonify({"error": "Emoji required"}), 400
         collection = room_messages_collection if message_type == "room" else private_messages_collection
         collection.update_one(
             {"_id": ObjectId(message_id)},
             {"$addToSet": {f"reactions.{emoji}": username}},
             upsert=True
         )
+        emit('reaction', {"message_id": message_id, "emoji": emoji, "username": username}, broadcast=True)
         logger.info(f"Reaction added: {emoji} to {message_id} by {username}")
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error adding reaction: {str(e)}")
         return jsonify({"error": "Reaction failed"}), 500
 
+@app.route('/delete_message/<message_type>/<message_id>', methods=["POST"])
+def delete_message(message_type, message_id):
+    """Delete a message (only by sender)."""
+    username = session.get('username')
+    if not username:
+        logger.warning("No username in session for delete_message")
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        collection = room_messages_collection if message_type == "room" else private_messages_collection
+        message = collection.find_one({"_id": ObjectId(message_id), "sender": username})
+        if not message:
+            logger.warning(f"Message {message_id} not found or not owned by {username}")
+            return jsonify({"error": "Message not found or unauthorized"}), 403
+        collection.delete_one({"_id": ObjectId(message_id)})
+        emit('message_deleted', {"message_id": message_id, "message_type": message_type}, broadcast=True)
+        logger.info(f"Message {message_id} deleted by {username}")
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting message: {str(e)}")
+        return jsonify({"error": "Failed to delete message"}), 500
+
+@app.route('/check_status')
+def check_status():
+    """Check user online status."""
+    username = session.get('username')
+    if not username:
+        logger.warning("No username in session for check_status")
+        return jsonify({"error": "No user in session"}), 401
+    try:
+        user = users_collection.find_one({"username": username})
+        return jsonify({
+            "username": username,
+            "online": user.get("online", False),
+            "last_seen": user.get("last_seen", datetime.utcnow()).strftime("%Y-%m-%d %H:%M:%S"),
+            "status": user.get("status", "No status")
+        })
+    except Exception as e:
+        logger.error(f"Error checking status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/init_data', methods=["GET"])
 def init_data():
+    """Initialize dummy data for testing."""
     try:
-        # Otomatis buat user dummy jika belum ada
         if not users_collection.find_one({"username": "testuser"}):
             users_collection.insert_one({
                 "username": "testuser",
@@ -429,10 +531,10 @@ def init_data():
                 "rooms": [],
                 "friends": [],
                 "avatar": None,
-                "last_seen": datetime.utcnow()
+                "last_seen": datetime.utcnow(),
+                "status": "Hey, I'm using SkyGenesis!"
             })
             logger.info("Created dummy user: testuser")
-        # Otomatis buat room dummy jika belum ada
         if not rooms_collection.find_one({"code": "TestRoom"}):
             rooms_collection.insert_one({
                 "code": "TestRoom",
@@ -445,13 +547,14 @@ def init_data():
                 {"$addToSet": {"rooms": "TestRoom"}}
             )
             logger.info("Created dummy room: TestRoom")
-        return jsonify({"success": True})
+        return jsonify({"success": True, "message": "Dummy data initialized"})
     except Exception as e:
         logger.error(f"Error initializing data: {str(e)}")
         return jsonify({"error": "Failed to initialize data"}), 500
 
 @socketio.on('connect')
 def handle_connect():
+    """Handle SocketIO connection."""
     username = session.get('username')
     room = session.get('room')
     private_receiver = session.get('private_receiver')
@@ -459,6 +562,12 @@ def handle_connect():
         logger.warning("No username in session on connect")
         return
     try:
+        users_collection.update_one(
+            {"username": username},
+            {"$set": {"online": True, "last_seen": datetime.utcnow()}}
+        )
+        emit('status_update', {"username": username, "online": True}, broadcast=True)
+        logger.info(f"User {username} connected to SocketIO")
         if room:
             room_data = rooms_collection.find_one({"code": room})
             if room_data:
@@ -473,7 +582,7 @@ def handle_connect():
                     "timestamp": datetime.utcnow(),
                     "read": False
                 })
-                emit('notification', {"message": f"{username} bergabung di room {room}"}, broadcast=True)
+                emit('notification', {"message": f"Kamu bergabung di room {room}"}, to=username)
                 rooms_collection.update_one(
                     {"code": room},
                     {"$addToSet": {"members": username}}
@@ -488,13 +597,14 @@ def handle_connect():
                 "timestamp": datetime.utcnow(),
                 "read": False
             })
-            emit('notification', {"message": f"{username} memulai chat pribadi dengan {private_receiver}"}, to=private_room)
+            emit('notification', {"message": f"Kamu memulai chat pribadi dengan {private_receiver}"}, to=username)
             logger.info(f"User {username} connected to private chat with {private_receiver}")
     except Exception as e:
         logger.error(f"Error on connect: {str(e)}")
 
 @socketio.on('room_message')
 def handle_room_message(payload):
+    """Handle group chat messages."""
     room = session.get('room')
     username = session.get('username')
     if not room or not rooms_collection.find_one({"code": room}):
@@ -506,23 +616,27 @@ def handle_room_message(payload):
             "message": payload["message"],
             "room": room,
             "timestamp": datetime.utcnow(),
-            "reactions": {}
+            "reactions": {},
+            "read_by": [username]
         }
         msg_id = room_messages_collection.insert_one(message).inserted_id
         send({"_id": str(msg_id), **message}, to=room)
-        notifications_collection.insert_one({
-            "username": username,
-            "message": f"Pesan baru di room {room}",
-            "timestamp": datetime.utcnow(),
-            "read": False
-        })
-        emit('notification', {"message": f"Pesan baru di room {room}"}, broadcast=True)
+        for member in rooms_collection.find_one({"code": room})["members"]:
+            if member != username:
+                notifications_collection.insert_one({
+                    "username": member,
+                    "message": f"Pesan baru di room {room} dari {username}",
+                    "timestamp": datetime.utcnow(),
+                    "read": False
+                })
+                emit('notification', {"message": f"Pesan baru di room {room} dari {username}"}, to=member)
         logger.info(f"Message sent in room {room} by {username}")
     except Exception as e:
         logger.error(f"Error sending room message: {str(e)}")
 
 @socketio.on('private_message')
 def handle_private_message(payload):
+    """Handle private chat messages."""
     username = session.get('username')
     receiver = session.get('private_receiver')
     if not receiver:
@@ -535,7 +649,8 @@ def handle_private_message(payload):
             "receiver": receiver,
             "message": payload["message"],
             "timestamp": datetime.utcnow(),
-            "reactions": {}
+            "reactions": {},
+            "read_by": [username]
         }
         msg_id = private_messages_collection.insert_one(message).inserted_id
         emit('private_message', {"_id": str(msg_id), **message}, to=private_room)
@@ -545,13 +660,14 @@ def handle_private_message(payload):
             "timestamp": datetime.utcnow(),
             "read": False
         })
-        emit('notification', {"message": f"Pesan pribadi baru dari {username}"}, to=private_room)
+        emit('notification', {"message": f"Pesan pribadi baru dari {username}"}, to=receiver)
         logger.info(f"Private message sent from {username} to {receiver}")
     except Exception as e:
         logger.error(f"Error sending private message: {str(e)}")
 
 @socketio.on('typing')
 def handle_typing(data):
+    """Handle typing indicator events."""
     username = session.get('username')
     room = session.get('room')
     private_receiver = session.get('private_receiver')
@@ -565,8 +681,29 @@ def handle_typing(data):
     except Exception as e:
         logger.error(f"Error handling typing: {str(e)}")
 
+@socketio.on('message_read')
+def handle_message_read(data):
+    """Handle message read events."""
+    username = session.get('username')
+    if not username:
+        logger.warning("No username in session for message_read")
+        return
+    try:
+        message_id = data['message_id']
+        message_type = data['message_type']
+        collection = room_messages_collection if message_type == 'room' else private_messages_collection
+        collection.update_one(
+            {"_id": ObjectId(message_id)},
+            {"$addToSet": {"read_by": username}}
+        )
+        emit('message_read', {"message_id": message_id, "username": username, "message_type": message_type}, broadcast=True)
+        logger.info(f"Message {message_id} read by {username}")
+    except Exception as e:
+        logger.error(f"Error handling message read: {str(e)}")
+
 @socketio.on('disconnect')
 def handle_disconnect():
+    """Handle SocketIO disconnection."""
     username = session.get('username')
     room = session.get('room')
     private_receiver = session.get('private_receiver')
@@ -576,6 +713,8 @@ def handle_disconnect():
                 {"username": username},
                 {"$set": {"online": False, "last_seen": datetime.utcnow()}}
             )
+            emit('status_update', {"username": username, "online": False}, broadcast=True)
+            logger.info(f"User {username} set to offline")
         if room and rooms_collection.find_one({"code": room}):
             rooms_collection.update_one(
                 {"code": room},
@@ -596,7 +735,7 @@ def handle_disconnect():
                     "timestamp": datetime.utcnow(),
                     "read": False
                 })
-                emit('notification', {"message": f"{username} keluar dari room {room}"}, broadcast=True)
+                emit('notification', {"message": f"Kamu keluar dari room {room}"}, to=username)
                 leave_room(room)
                 logger.info(f"User {username} disconnected from room {room}")
         if private_receiver:
