@@ -34,7 +34,7 @@ if not app.config["SECRET_KEY"]:
 
 socketio = SocketIO(app)
 
-# MongoDB setup
+# MongoDB setup with automatic collection creation
 try:
     mongo_client = MongoClient(os.getenv("MONGO_URI"), serverSelectionTimeoutMS=5000)
     mongo_client.server_info()  # Test connection
@@ -44,8 +44,13 @@ try:
     private_messages_collection = db.private_messages
     notifications_collection = db.notifications
     rooms_collection = db.rooms
-    friend_requests_collection = db.friend_requests  # Moved inside try block
     fs = GridFS(db)
+    # Otomatis buat collection jika belum ada
+    collections_to_create = ["users", "rooms", "room_messages", "private_messages", "notifications"]
+    for collection in collections_to_create:
+        if collection not in db.list_collection_names():
+            db.create_collection(collection)
+            logger.info(f"Created collection: {collection}")
     logger.info("Successfully connected to MongoDB")
 except Exception as e:
     logger.error(f"Failed to connect to MongoDB: {str(e)}")
@@ -88,7 +93,7 @@ def home():
                     "username": username,
                     "online": True,
                     "rooms": [],
-                    "friends": [],  # Added friends field
+                    "friends": [],
                     "avatar": None,
                     "last_seen": datetime.utcnow()
                 })
@@ -413,6 +418,38 @@ def react(message_type, message_id):
         logger.error(f"Error adding reaction: {str(e)}")
         return jsonify({"error": "Reaction failed"}), 500
 
+@app.route('/init_data', methods=["GET"])
+def init_data():
+    try:
+        # Otomatis buat user dummy jika belum ada
+        if not users_collection.find_one({"username": "testuser"}):
+            users_collection.insert_one({
+                "username": "testuser",
+                "online": False,
+                "rooms": [],
+                "friends": [],
+                "avatar": None,
+                "last_seen": datetime.utcnow()
+            })
+            logger.info("Created dummy user: testuser")
+        # Otomatis buat room dummy jika belum ada
+        if not rooms_collection.find_one({"code": "TestRoom"}):
+            rooms_collection.insert_one({
+                "code": "TestRoom",
+                "creator": "testuser",
+                "created_at": datetime.utcnow(),
+                "members": ["testuser"]
+            })
+            users_collection.update_one(
+                {"username": "testuser"},
+                {"$addToSet": {"rooms": "TestRoom"}}
+            )
+            logger.info("Created dummy room: TestRoom")
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error initializing data: {str(e)}")
+        return jsonify({"error": "Failed to initialize data"}), 500
+
 @socketio.on('connect')
 def handle_connect():
     username = session.get('username')
@@ -544,19 +581,24 @@ def handle_disconnect():
                 {"code": room},
                 {"$pull": {"members": username}}
             )
-            send({
-                "sender": "",
-                "message": f"{username} telah keluar chat"
-            }, to=room)
-            notifications_collection.insert_one({
-                "username": username,
-                "message": f"Kamu keluar dari room {room}",
-                "timestamp": datetime.utcnow(),
-                "read": False
-            })
-            emit('notification', {"message": f"{username} keluar dari room {room}"}, broadcast=True)
-            leave_room(room)
-            logger.info(f"User {username} disconnected from room {room}")
+            room_data = rooms_collection.find_one({"code": room})
+            if not room_data["members"]:
+                rooms_collection.delete_one({"code": room})
+                logger.info(f"Room {room} deleted because it has no members")
+            else:
+                send({
+                    "sender": "",
+                    "message": f"{username} telah keluar chat"
+                }, to=room)
+                notifications_collection.insert_one({
+                    "username": username,
+                    "message": f"Kamu keluar dari room {room}",
+                    "timestamp": datetime.utcnow(),
+                    "read": False
+                })
+                emit('notification', {"message": f"{username} keluar dari room {room}"}, broadcast=True)
+                leave_room(room)
+                logger.info(f"User {username} disconnected from room {room}")
         if private_receiver:
             private_room = f"private_{min(username, private_receiver)}_{max(username, private_receiver)}"
             leave_room(private_room)
