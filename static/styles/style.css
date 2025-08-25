@@ -1,210 +1,56 @@
 body {
   font-family: Arial, sans-serif;
-  background: linear-gradient(to bottom, #e0f7fa, #b2ebf2);
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-header {
-  background: #007bff;
-  color: white;
-  text-align: center;
-  padding: 15px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-footer {
-  background: #333;
-  color: white;
-  text-align: center;
-  padding: 10px;
-  margin-top: auto;
-}
-
-#home-container, #dashboard-container, #room-container, #private-container {
-  max-width: 700px;
-  margin: 20px auto;
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s;
-}
-
-#home-container:hover, #dashboard-container:hover, #room-container:hover, #private-container:hover {
-  transform: translateY(-5px);
-}
-
-h1, h2, h3, h4 {
-  color: #333;
-  text-align: center;
-}
-
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-input, button, select {
-  padding: 10px;
-  border-radius: 5px;
-  border: 1px solid #ddd;
-  font-size: 16px;
-}
-
-button.btn {
-  background: #007bff;
-  color: white;
-  border: none;
-  cursor: pointer;
-  transition: background 0.3s, transform 0.2s;
-}
-
-button.btn:hover {
-  background: #0056b3;
-  transform: scale(1.05);
-}
-
-button.btn-small {
-  padding: 5px 10px;
-  font-size: 14px;
-}
-
-button.btn-logout {
-  background: #dc3545;
-}
-
-button.btn-logout:hover {
-  background: #c82333;
-}
-
-#error {
-  color: #dc3545;
-  text-align: center;
-}
-
-#msgs-container {
-  height: 400px;
-  overflow-y: auto;
-  border: 1px solid #ddd;
-  padding: 10px;
-  background: #f9f9f9;
-  border-radius: 5px;
-}
-
-.message-item {
-  list-style: none;
-  margin: 10px 0;
-  padding: 10px;
-  border-radius: 5px;
-  max-width: 70%;
-}
-
-.self-message-item {
-  background: #dcf8c6;
-  margin-left: auto;
-  text-align: right;
-}
-
-.peer-message-item {
-  background: #fff;
-  margin-right: auto;
-  text-align: left;
-  border: 1px solid #ddd;
-}
-
-.muted-text, .muted-text-white {
-  color: gray;
-  font-size: 0.8em;
-}
-
-#dashboard-container ul {
-  list-style: none;
-  padding: 0;
-}
-
-#dashboard-container li {
-  margin: 10px 0;
-  padding: 10px;
-  background: #f9f9f9;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-#dashboard-container a {
-  color: #007bff;
-  text-decoration: none;
-}
-
-#dashboard-container a:hover {
-  text-decoration: underline;
-}
-
-.profile-section, .users-section, .rooms-section, .notifications-section {
-  margin-bottom: 20px;
-}
-
-#message-box {
-  display: flex;
-  gap: 10px;
-}
-
-#message-input {
-  flex-grow: 1;
 }
 
 .avatar {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-#search-results {
-  margin: 10px 0;
-}
-
-.notification {
-  background: #28a745;
-  color: white;
-  padding: 10px;
-  border-radius: 5px;
-  text-align: center;
-}
-
-.notifications-section ul {
-  list-style: none;
-  padding: 0;
-}
-
-.notifications-section li {
-  padding: 10px;
-  margin: 5px 0;
-  background: #f0f0f0;
-  border-radius: 5px;
-}
-
-.notifications-section .unread {
-  background: #d4edda;
-  font-weight: bold;
-}
-
-#typing-indicator {
-  padding: 5px;
-  color: #666;
-}
-
-.reactions {
-  margin-top: 5px;
-}
-
-.reaction {
   margin-right: 10px;
-  font-size: 0.9em;
+}
+
+.avatar:hover {
+  transform: scale(1.1);
+  transition: transform 0.2s;
+}
+
+.chat-container {
+  background-color: #f8f9fa;
+}
+
+.chat-bubble {
+  max-width: 70%;
+  margin-bottom: 10px;
+}
+
+.chat-bubble.me {
+  margin-left: auto;
+  background-color: #007bff;
+  color: white;
+  border-radius: 10px 10px 0 10px;
+}
+
+.chat-bubble.other {
+  margin-right: auto;
+  background-color: #e9ecef;
+  border-radius: 10px 10px 10px 0;
+}
+
+.reactions span {
+  margin-right: 5px;
+  cursor: pointer;
+}
+
+#search-user {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+@media (max-width: 576px) {
+  .container {
+    padding: 10px;
+  }
+  .chat-bubble {
+    max-width: 90%;
+  }
 }
